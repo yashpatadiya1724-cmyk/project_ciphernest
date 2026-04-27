@@ -1,0 +1,11 @@
+{
+  "name": "ciphernest",
+  "version": "1.0.0",
+  "description": "CipherNest Cybersecurity Platform",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "setup": "npm run install:all && cp backend/.env.example backend/.env && echo '✅ Setup complete! Edit backend/.env then run: npm run dev:backend and npm run dev:frontend'"
+  }
+}

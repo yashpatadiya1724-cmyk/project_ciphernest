@@ -1,0 +1,58 @@
+version: '3.8'
+# ── CipherNest Production Stack ───────────────────────────────────────────────
+# Backup & Recovery procedures: see BACKUP_RECOVERY.md
+# Compliance checklist:         see COMPLIANCE_AUDIT_CHECKLIST.md
+# Environment template:         see template.env (copy to .env, never commit .env)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ciphernest-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/ciphernest
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRE=${JWT_EXPIRE:-24h}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - ciphernest-net
+
+  mongodb:
+    image: mongo:6.0
+    container_name: ciphernest-mongodb
+    restart: unless-stopped
+    ports:
+      # Bind to localhost only — prevents external access to raw DB port
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - ciphernest_mongo_data:/data/db
+    networks:
+      - ciphernest-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  ciphernest_mongo_data:
+    name: ciphernest_mongo_data
+
+networks:
+  ciphernest-net:
+    name: ciphernest-net
+    driver: bridge
