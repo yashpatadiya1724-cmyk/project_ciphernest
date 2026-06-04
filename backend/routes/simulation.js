@@ -29,9 +29,8 @@ router.post('/simulate', protect, requireAdmin, async (req, res) => {
     const CITY_NAMES = ['Moscow','Beijing','Frankfurt','Sao Paulo','Singapore','Dubai','Cape Town'];
     const SEVERITIES = ['medium','high','critical'];
 
-    // 1. Create synthetic threat record
+    // 1. Create synthetic threat record (no _id — let MongoDB generate it)
     const synThreat = {
-      _id:      `sim_${Date.now()}`,
       type:     'ip',
       value:    `${Math.floor(Math.random()*220)+1}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
       category: 'Simulated Attack',
@@ -42,9 +41,9 @@ router.post('/simulate', protect, requireAdmin, async (req, res) => {
     };
 
     // Upsert into GlobalThreat collection
-    await GlobalThreat.findOneAndUpdate(
+    const savedThreat = await GlobalThreat.findOneAndUpdate(
       { value: synThreat.value },
-      { ...synThreat, _id: undefined },
+      synThreat,
       { upsert: true, new: true }
     );
 
@@ -66,10 +65,10 @@ router.post('/simulate', protect, requireAdmin, async (req, res) => {
     });
 
     // 4. Push via WebSocket — ThreatMap and Dashboard update in real time
-    emitThreat(synThreat);
-    emitSimEvent({ threats: [synThreat], alert: { title: 'Simulated Threat', severity: synThreat.severity } });
+    emitThreat(savedThreat.toObject());
+    emitSimEvent({ threats: [savedThreat.toObject()], alert: { title: 'Simulated Threat', severity: savedThreat.severity } });
 
-    res.json({ success: true, threat: synThreat });
+    res.json({ success: true, threat: savedThreat });
   } catch (err) {
     res.status(500).json({ message: 'Simulation failed', error: err.message });
   }

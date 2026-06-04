@@ -1,5 +1,4 @@
 const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
 
 // 1. IP-Based Rate Limiter (200 requests / 15 mins)
 const globalRateLimiter = rateLimit({
@@ -77,9 +76,13 @@ const enforceCooldown = (req, res, next) => {
 };
 
 const baseUserLimiter = rateLimit({
-  windowMs: 60 * 1000, 
+  windowMs: 60 * 1000,
   max: 50,
-  keyGenerator: (req) => req.user ? req.user._id.toString() : req.ip,
+  // express-rate-limit v8: custom keyGenerator must NOT reference req.ip directly
+  // to avoid ERR_ERL_KEY_GEN_IPV6. For authenticated users we key by userId;
+  // for unauthenticated requests we skip per-user limiting (global limiter covers them).
+  skip: (req) => !req.user,
+  keyGenerator: (req) => req.user._id.toString(),
   handler: async (req, res, next, options) => {
     const key = req.user ? req.user._id.toString() : req.ip;
     
@@ -87,16 +90,17 @@ const baseUserLimiter = rateLimit({
     userCooldowns.set(key, Date.now() + 5 * 60 * 1000);
     
     if (req.user) {
-      let AuditLog;
-      try { AuditLog = mongoose.model('AuditLog'); } catch(e) { AuditLog = mongoose.model('ActivityLog'); }
+      // Use ActivityLog (not AuditLog) for throttle events — AuditLog schema
+      // requires method/route fields that aren't available in this context
+      const { ActivityLog } = require('../models/index');
       try {
-        await AuditLog.create({
-          userId: req.user._id,
-          action: 'THROTTLED_USER_EVENT',
+        await ActivityLog.create({
+          userId:  req.user._id,
+          action:  'THROTTLED_USER_EVENT',
           details: 'User exceeded 50 tool requests in 60 seconds. 5-minute cooldown activated.',
-          type: 'warning'
+          icon:    '⚠️'
         });
-      } catch (e) { console.error('Audit failed for throttle event', e); }
+      } catch (e) { console.error('Activity log failed for throttle event', e); }
     }
     
     res.status(429).json({ message: 'Rate limit exceeded. 5-minute cooldown activated.' });

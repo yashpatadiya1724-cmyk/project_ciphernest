@@ -78,7 +78,9 @@ const correlateLocalWithGlobal = async (userId) => {
 
       return {
         count: matches.length,
-        summary: aiResponse.response,
+        summary: typeof aiResponse.response === 'string'
+          ? aiResponse.response
+          : aiResponse.response?.threat_assessment || JSON.stringify(aiResponse.response),
         matches
       };
     }

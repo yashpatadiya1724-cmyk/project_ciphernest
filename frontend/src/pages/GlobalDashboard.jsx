@@ -1,158 +1,248 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { simulationAPI } from '../services/api';
+import { motion } from 'framer-motion';
+import { Globe, RefreshCw, AlertTriangle } from 'lucide-react';
+import api from '../services/api';
+import BentoCard from '../components/dashboard/BentoCard';
 
-const COLORS = ['#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#f43f5e'];
+const COLORS = ['#6366F1', '#f43f5e', '#fbbf24', '#10b981', '#fb923c'];
+
+const SEV_COLOR = {
+  critical: '#f43f5e',
+  high:     '#fb923c',
+  medium:   '#fbbf24',
+  low:      '#10b981',
+};
 
 const GlobalDashboard = () => {
-  const [data, setData] = useState(null);
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [error, setError]     = useState(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await simulationAPI.threats.getGlobal();
+      setError(null);
+      // Use /api/threats/dashboard which returns the structured object
+      // { totalThreats, topCountries, threatTypes, recentThreats }
+      const res = await api.get('/threats/dashboard');
       setData(res.data);
     } catch (err) {
-      console.error('Failed to fetch global threat data:', err);
+      console.error('GlobalDashboard fetch error:', err);
+      setError('Failed to load global threat intelligence. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => { fetchData(); }, []);
+
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-400">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 border-4 border-slate-700 border-t-sky-500 rounded-full animate-spin mb-4"></div>
-          Scanning global intelligence networks...
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2"
+            style={{ borderColor: 'var(--accent)' }} />
+          <p className="text-sm animate-pulse" style={{ color: 'var(--text-muted)' }}>
+            Scanning global intelligence networks…
+          </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="p-6 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <header className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-black text-white tracking-tight uppercase">Global Threat Intelligence</h1>
-          <p className="text-slate-400 mt-1">Real-time worldwide security observations and malicious activity trends.</p>
+  // ── Error state ────────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+          <AlertTriangle size={40} style={{ color: '#f43f5e' }} />
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{error}</p>
+          <button onClick={fetchData}
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: 'var(--accent)', color: '#fff' }}>
+            Retry
+          </button>
         </div>
-        <button 
-          onClick={fetchData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold transition-all"
-        >
-          REFRESH FEED
-        </button>
+      </div>
+    );
+  }
+
+  // Safe defaults — prevent crashes if any field is missing
+  const topCountries  = Array.isArray(data?.topCountries)  ? data.topCountries  : [];
+  const threatTypes   = Array.isArray(data?.threatTypes)   ? data.threatTypes   : [];
+  const recentThreats = Array.isArray(data?.recentThreats) ? data.recentThreats : [];
+  const totalThreats  = data?.totalThreats ?? 0;
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <Globe size={24} style={{ color: 'var(--accent)' }} />
+          <div>
+            <h1 className="text-2xl font-black tracking-tight"
+              style={{ color: 'var(--text-primary)' }}>
+              Global Threat Intelligence
+            </h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Worldwide security observations and malicious activity trends
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs px-3 py-1.5 rounded-full font-semibold"
+            style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--accent)', border: '1px solid rgba(99,102,241,0.25)' }}>
+            {totalThreats} indicators
+          </span>
+          <button onClick={fetchData} aria-label="Refresh feed"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-ui)', color: 'var(--text-muted)' }}>
+            <RefreshCw size={13} /> Refresh
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Charts row */}
+      <motion.div
+        className="grid grid-cols-1 lg:grid-cols-2 gap-5"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
         {/* Top Countries Bar Chart */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-2xl">
-          <h2 className="text-lg font-bold text-white mb-6 uppercase tracking-wider flex items-center gap-2">
-            <span className="w-2 h-6 bg-sky-500 rounded-full"></span>
-            Top Threat Origins (by Volume)
+        <BentoCard>
+          <h2 className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"
+            style={{ color: 'var(--text-muted)' }}>
+            <span className="w-2 h-4 rounded-full" style={{ background: 'var(--accent)' }} />
+            Top Threat Origins
           </h2>
-          <div className="h-64 mt-4 text-xs font-mono">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.topCountries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} vertical={false} />
-                <XAxis dataKey="name" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
-                />
-                <Bar dataKey="count" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+          {topCountries.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs"
+              style={{ color: 'var(--text-muted)' }}>No data available</div>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topCountries} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-ui)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--bg-panel)', border: '1px solid var(--border-ui)', borderRadius: '8px', fontSize: '12px' }}
+                    labelStyle={{ color: 'var(--text-muted)' }}
+                  />
+                  <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </BentoCard>
 
         {/* Threat Types Pie Chart */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-2xl">
-          <h2 className="text-lg font-bold text-white mb-6 uppercase tracking-wider flex items-center gap-2">
-            <span className="w-2 h-6 bg-purple-500 rounded-full"></span>
-            Global Threat Distribution
+        <BentoCard>
+          <h2 className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"
+            style={{ color: 'var(--text-muted)' }}>
+            <span className="w-2 h-4 rounded-full" style={{ background: '#8B5CF6' }} />
+            Threat Distribution
           </h2>
-          <div className="h-64 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data?.threatTypes}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {data?.threatTypes.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                   contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
-                />
-                <Legend iconType="circle" />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+          {threatTypes.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs"
+              style={{ color: 'var(--text-muted)' }}>No data available</div>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={threatTypes} cx="50%" cy="50%"
+                    innerRadius={55} outerRadius={80}
+                    paddingAngle={4} dataKey="value">
+                    {threatTypes.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ background: 'var(--bg-panel)', border: '1px solid var(--border-ui)', borderRadius: '8px', fontSize: '12px' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', color: 'var(--text-muted)' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </BentoCard>
+      </motion.div>
 
-      {/* Recent Activity Table */}
-      <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-slate-800">
-          <h2 className="text-lg font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <span className="w-2 h-6 bg-rose-500 rounded-full"></span>
-            Recent High-Severity Indicators
-          </h2>
-        </div>
-        <div className="overflow-x-auto text-xs">
-          <table className="w-full text-left">
-            <thead className="bg-slate-950/50 text-slate-400 font-bold border-b border-slate-800 uppercase tracking-tighter">
-              <tr>
-                <th className="px-6 py-4">Indicator</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Severity</th>
-                <th className="px-6 py-4">Country</th>
-                <th className="px-6 py-4">Last Seen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {data?.recentThreats.map((threat, idx) => (
-                <tr key={idx} className="hover:bg-slate-800/20 transition-colors group">
-                  <td className="px-6 py-4 font-mono text-slate-300 group-hover:text-white transition-colors">{threat.value}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 rounded bg-slate-800 text-[10px] font-bold uppercase border border-slate-700">
-                      {threat.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400">{threat.category}</td>
-                  <td className="px-6 py-4">
-                    <span className={`font-black uppercase tracking-tighter ${
-                      threat.severity === 'critical' ? 'text-rose-500' : 
-                      threat.severity === 'high' ? 'text-orange-500' : 'text-amber-500'
-                    }`}>
-                      {threat.severity}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400">{threat.country}</td>
-                  <td className="px-6 py-4 text-slate-500">{new Date(threat.lastSeen).toLocaleTimeString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Recent Threats Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
+        <BentoCard noPadding>
+          <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--border-ui)' }}>
+            <h2 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+              style={{ color: 'var(--text-muted)' }}>
+              <span className="w-2 h-4 rounded-full" style={{ background: '#f43f5e' }} />
+              Recent High-Severity Indicators
+            </h2>
+          </div>
+
+          {recentThreats.length === 0 ? (
+            <div className="py-12 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+              No recent threats found
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border-ui)' }}>
+                  <tr>
+                    {['Indicator','Type','Category','Severity','Country','Last Seen'].map(h => (
+                      <th key={h} className="px-5 py-3 font-bold uppercase tracking-wider"
+                        style={{ color: 'var(--text-muted)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentThreats.map((threat, idx) => (
+                    <tr key={threat._id || idx}
+                      className="transition-colors"
+                      style={{ borderBottom: '1px solid var(--border-ui)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-page)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <td className="px-5 py-3 font-mono" style={{ color: 'var(--text-primary)' }}>
+                        {threat.value}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="px-2 py-0.5 rounded text-xs font-bold uppercase"
+                          style={{ background: 'var(--bg-page)', border: '1px solid var(--border-ui)', color: 'var(--text-muted)' }}>
+                          {threat.type}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3" style={{ color: 'var(--text-muted)' }}>
+                        {threat.category}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="font-black uppercase text-xs"
+                          style={{ color: SEV_COLOR[threat.severity] || 'var(--text-muted)' }}>
+                          {threat.severity}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3" style={{ color: 'var(--text-muted)' }}>
+                        {threat.country || '—'}
+                      </td>
+                      <td className="px-5 py-3" style={{ color: 'var(--text-muted)' }}>
+                        {threat.lastSeen ? new Date(threat.lastSeen).toLocaleTimeString() : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </BentoCard>
+      </motion.div>
     </div>
   );
 };
