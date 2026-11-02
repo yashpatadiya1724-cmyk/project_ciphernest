@@ -35,6 +35,7 @@ const healthRoutes     = require('./routes/health');
 // Phase 2 — new admin-only routes (2.1 RBAC)
 const auditRoutes      = require('./routes/audit');
 const configRoutes     = require('./routes/config');
+const siemRoutes       = require('./routes/siem');
 
 // ── Governance middleware ────────────────────────────────────────────────────
 const { auditLogMiddleware } = require('./middleware/auditLog');
@@ -124,6 +125,7 @@ app.use('/api/actions',     actionRoutes);
 // Phase 2 — admin-only governance routes
 app.use('/api/audit',       auditRoutes);   // 2.1 RBAC: ROLE_ADMIN only
 app.use('/api/config',      configRoutes);  // 2.1 RBAC: ROLE_ADMIN only
+app.use('/api/siem',        siemRoutes);    // Kafka SIEM stream broker & TimescaleDB
 
 // ── 2.6 Global Error Handler — stack trace suppression ───────────────────────
 // In production: generic message only. In dev: full stack exposed.

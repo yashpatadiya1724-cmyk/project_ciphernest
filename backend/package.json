@@ -8,7 +8,8 @@
     "dev":          "nodemon server.js",
     "audit:deps":   "snyk monitor --file=package.json",
     "audit:quick":  "npm audit --audit-level=high",
-    "stress:test":  "node scripts/stressTest.js"
+    "stress:test":  "node scripts/stressTest.js",
+    "test:siem":    "node test/siem_kafka_test.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
