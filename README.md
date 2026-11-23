@@ -8,6 +8,8 @@
 
 ---
 
+[![CI](https://github.com/yashpatadiya1724-cmyk/project_ciphernest/actions/workflows/ci.yml/badge.svg)](https://github.com/yashpatadiya1724-cmyk/project_ciphernest/actions/workflows/ci.yml)
+[![Sponsor](https://img.shields.io/badge/Sponsor-yashpatadiya1724--cmyk-ea4aaa?style=flat&logo=github-sponsors)](https://github.com/sponsors/yashpatadiya1724-cmyk)
 [![Node.js](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-339933?style=flat-square&logo=node.js)](https://nodejs.org)
 [![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61DAFB?style=flat-square&logo=react)](https://react.dev)
 [![MongoDB](https://img.shields.io/badge/Database-MongoDB-47A248?style=flat-square&logo=mongodb)](https://mongodb.com)
