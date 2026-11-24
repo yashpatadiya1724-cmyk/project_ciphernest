@@ -36,6 +36,9 @@ class SiemKafkaStreamEngine {
     // Consumer group heartbeats: groupId -> Map<memberId, { lastSeen, currentOffset }>
     this.consumerHeartbeats = new Map();
 
+    // Active IP quarantines: ip -> { ip, reason, quarantinedAt, expiresAt }
+    this.quarantinedIPs = new Map();
+
     // Sliding window tracking: ip -> { failedAuthCount: [timestamps], portsScanned: Map<port, timestamp> }
     this.ipTracking = new Map();
 
@@ -271,6 +274,40 @@ class SiemKafkaStreamEngine {
       deadMembers,
       totalRegistered: group.size,
     };
+  }
+
+  /**
+   * Quarantine / dynamic firewall ban on anomalous IP
+   */
+  quarantineIP(ip, durationSeconds = 3600, reason = 'DYNAMIC_THREAT_CONTAINMENT') {
+    const expiresAt = Date.now() + (durationSeconds * 1000);
+    this.quarantinedIPs.set(ip, {
+      ip,
+      reason,
+      quarantinedAt: Date.now(),
+      expiresAt,
+    });
+    return true;
+  }
+
+  /**
+   * Check if IP is under active quarantine
+   */
+  isIPQuarantined(ip) {
+    if (!this.quarantinedIPs.has(ip)) return false;
+    const entry = this.quarantinedIPs.get(ip);
+    if (Date.now() > entry.expiresAt) {
+      this.quarantinedIPs.delete(ip);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Lift quarantine ban on IP
+   */
+  unquarantineIP(ip) {
+    return this.quarantinedIPs.delete(ip);
   }
 
   /**

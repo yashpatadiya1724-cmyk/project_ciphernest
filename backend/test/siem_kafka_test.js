@@ -173,6 +173,27 @@ if (groupStatus.deadMembers[0].memberId !== 'worker-dead') {
 }
 console.log(`✅ Consumer Heartbeat: Cluster group '${groupId}' correctly detected 2 active members and 1 dead worker`);
 
+// 11. IP Quarantine and Threat Containment Test
+const maliciousIP = '198.51.100.99';
+engine.quarantineIP(maliciousIP, 3600, 'BRUTE_FORCE_THREAT');
+if (!engine.isIPQuarantined(maliciousIP)) {
+  throw new Error('Failed to quarantine malicious IP');
+}
+
+// Expired quarantine automatic cleanup
+const expiredIP = '203.0.113.44';
+engine.quarantineIP(expiredIP, -10, 'EXPIRED_BAN');
+if (engine.isIPQuarantined(expiredIP)) {
+  throw new Error('Expired quarantine was not automatically released');
+}
+
+// Manual unquarantine
+engine.unquarantineIP(maliciousIP);
+if (engine.isIPQuarantined(maliciousIP)) {
+  throw new Error('Failed to manually lift IP quarantine');
+}
+console.log(`✅ IP Quarantine: Verified dynamic threat containment, expiration release, and manual unban`);
+
 console.log('==================================================');
 console.log('🏆 ALL CIPHERNEST SIEM TESTS PASSED (100%)');
 console.log('==================================================');
