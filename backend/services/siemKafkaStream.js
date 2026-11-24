@@ -36,6 +36,9 @@ class SiemKafkaStreamEngine {
     // Consumer group heartbeats: groupId -> Map<memberId, { lastSeen, currentOffset }>
     this.consumerHeartbeats = new Map();
 
+    // Committed consumer offsets: groupId -> Map<topic, Map<partition, offset>>
+    this.committedOffsets = new Map();
+
     // Active IP quarantines: ip -> { ip, reason, quarantinedAt, expiresAt }
     this.quarantinedIPs = new Map();
 
@@ -308,6 +311,53 @@ class SiemKafkaStreamEngine {
    */
   unquarantineIP(ip) {
     return this.quarantinedIPs.delete(ip);
+  }
+
+  /**
+   * Commit consumer group offset for a given topic & partition
+   */
+  commitOffset(groupId, topic, partition, offset) {
+    if (!this.committedOffsets.has(groupId)) {
+      this.committedOffsets.set(groupId, new Map());
+    }
+    const groupTopicMap = this.committedOffsets.get(groupId);
+    if (!groupTopicMap.has(topic)) {
+      groupTopicMap.set(topic, new Map());
+    }
+    groupTopicMap.get(topic).set(partition, offset);
+    return true;
+  }
+
+  /**
+   * Calculate consumer lag across all partitions for a given topic
+   */
+  getConsumerGroupLag(groupId, topic) {
+    const partitionLag = {};
+    let totalLag = 0;
+
+    const topicOffsets = this.offsets[topic] || new Array(this.partitionCount).fill(0);
+    const groupTopicMap = this.committedOffsets.has(groupId) ? this.committedOffsets.get(groupId).get(topic) : null;
+
+    for (let p = 0; p < this.partitionCount; p++) {
+      const latestOffset = topicOffsets[p] || 0;
+      const committedOffset = (groupTopicMap && groupTopicMap.has(p)) ? groupTopicMap.get(p) : 0;
+      const lag = Math.max(0, latestOffset - committedOffset);
+      totalLag += lag;
+
+      partitionLag[p] = {
+        partition: p,
+        latestOffset,
+        committedOffset,
+        lag
+      };
+    }
+
+    return {
+      groupId,
+      topic,
+      totalLag,
+      partitionLag
+    };
   }
 
   /**

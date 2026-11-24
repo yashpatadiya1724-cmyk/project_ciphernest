@@ -194,6 +194,32 @@ if (engine.isIPQuarantined(maliciousIP)) {
 }
 console.log(`✅ IP Quarantine: Verified dynamic threat containment, expiration release, and manual unban`);
 
+// 12. Consumer Group Offset Commit and Lag Telemetry Test
+const lagTestGroup = 'siem-elastic-indexer';
+const targetTopic = 'firewall.traffic';
+
+// Commit offsets for partitions 0 and 1
+const p0Max = engine.offsets[targetTopic][0];
+const p1Max = engine.offsets[targetTopic][1];
+engine.commitOffset(lagTestGroup, targetTopic, 0, p0Max - 50); // 50 behind
+engine.commitOffset(lagTestGroup, targetTopic, 1, p1Max);      // 0 behind (fully caught up)
+
+const lagReport = engine.getConsumerGroupLag(lagTestGroup, targetTopic);
+if (lagReport.groupId !== lagTestGroup || lagReport.topic !== targetTopic) {
+  throw new Error('Lag report metadata mismatch');
+}
+if (lagReport.partitionLag[0].lag !== 50) {
+  throw new Error(`Expected partition 0 lag of 50, got ${lagReport.partitionLag[0].lag}`);
+}
+if (lagReport.partitionLag[1].lag !== 0) {
+  throw new Error(`Expected partition 1 lag of 0, got ${lagReport.partitionLag[1].lag}`);
+}
+// Partition 2 was uncommitted, so lag equals entire partition length
+if (lagReport.partitionLag[2].lag !== engine.offsets[targetTopic][2]) {
+  throw new Error(`Expected partition 2 lag of ${engine.offsets[targetTopic][2]}, got ${lagReport.partitionLag[2].lag}`);
+}
+console.log(`✅ Consumer Lag: Verified offset commit tracking and multi-partition lag calculation (total lag: ${lagReport.totalLag})`);
+
 console.log('==================================================');
 console.log('🏆 ALL CIPHERNEST SIEM TESTS PASSED (100%)');
 console.log('==================================================');
