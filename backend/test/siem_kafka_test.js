@@ -119,6 +119,27 @@ const anomalyTopicOffsets = engine.offsets['threat.anomalies'];
 const totalAnomaliesProduced = anomalyTopicOffsets.reduce((acc, curr) => acc + curr, 0);
 console.log(`✅ Kafka Topic 'threat.anomalies': Total ${totalAnomaliesProduced} security events routed to downstream SIEM subscribers`);
 
+// 8. Partition Consumer Offset & Batch Slicing Test
+const batchFromP0 = engine.consume('firewall.traffic', 0, 0, 5);
+if (batchFromP0.length !== 5) {
+  throw new Error(`Expected 5 consumed events from P0, got ${batchFromP0.length}`);
+}
+if (batchFromP0[0].offset !== 0 || batchFromP0[0].partition !== 0) {
+  throw new Error('Offset or partition mismatch in consumer batch');
+}
+
+const offsetSeekBatch = engine.consume('firewall.traffic', 0, 3, 2);
+if (offsetSeekBatch.length !== 2 || offsetSeekBatch[0].offset !== 3) {
+  throw new Error('Consumer failed to seek to offset 3');
+}
+
+const emptyTopicBatch = engine.consume('missing.topic', 0, 0, 10);
+const emptyPartitionBatch = engine.consume('firewall.traffic', 99, 0, 10);
+if (emptyTopicBatch.length !== 0 || emptyPartitionBatch.length !== 0) {
+  throw new Error('Consumer should return empty array for non-existent topic or partition');
+}
+console.log(`✅ Partition Consumer: Verified offset seek, batch limits, and boundary fallbacks`);
+
 console.log('==================================================');
 console.log('🏆 ALL CIPHERNEST SIEM TESTS PASSED (100%)');
 console.log('==================================================');

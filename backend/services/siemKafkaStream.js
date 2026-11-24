@@ -95,6 +95,19 @@ class SiemKafkaStreamEngine {
   }
 
   /**
+   * Consume partitioned messages from a topic offset with batch bounding
+   */
+  consume(topic, partition, fromOffset = 0, limit = 100) {
+    if (!this.topics[topic] || !this.topics[topic][partition]) {
+      return [];
+    }
+    const partitionMessages = this.topics[topic][partition];
+    return partitionMessages
+      .filter(msg => msg.offset >= fromOffset)
+      .slice(0, Math.max(1, limit));
+  }
+
+  /**
    * Real-time anomaly detection logic across sliding windows
    */
   inspectAnomaly(event) {
