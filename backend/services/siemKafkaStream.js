@@ -27,7 +27,14 @@ class SiemKafkaStreamEngine {
       'firewall.traffic': new Array(partitionCount).fill(0),
       'auth.attempts': new Array(partitionCount).fill(0),
       'threat.anomalies': new Array(partitionCount).fill(0),
+      'dlq.malformed': new Array(partitionCount).fill(0),
     };
+
+    // Initialize dlq topic
+    this.topics['dlq.malformed'] = Array.from({ length: partitionCount }, () => []);
+
+    // Consumer group heartbeats: groupId -> Map<memberId, { lastSeen, currentOffset }>
+    this.consumerHeartbeats = new Map();
 
     // Sliding window tracking: ip -> { failedAuthCount: [timestamps], portsScanned: Map<port, timestamp> }
     this.ipTracking = new Map();
@@ -68,8 +75,8 @@ class SiemKafkaStreamEngine {
     this.topics[topic][partition].push(enriched);
     this.totalIngested++;
 
-    // Trigger real-time anomaly check on raw ingested telemetry (skip internal anomaly topics to prevent recursion)
-    if (topic !== 'threat.anomalies') {
+    // Trigger real-time anomaly check on raw ingested telemetry (skip internal anomaly and DLQ topics)
+    if (topic !== 'threat.anomalies' && topic !== 'dlq.malformed') {
       this.inspectAnomaly(enriched);
     }
 
@@ -205,6 +212,65 @@ class SiemKafkaStreamEngine {
       this.produce('threat.anomalies', anomaly, sourceIP);
       tracker.trafficTimestamps = [];
     }
+  }
+
+  /**
+   * Route unparseable, malformed, or poisoned payloads to Dead Letter Queue (DLQ)
+   */
+  routeToDeadLetterQueue(rawPayload, reason, sourceIP = 'unknown') {
+    const dlqEvent = {
+      id: `DLQ-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+      originalPayload: rawPayload,
+      errorReason: reason,
+      sourceIP,
+      timestamp: Date.now(),
+      status: 'DEAD_LETTER',
+    };
+    return this.produce('dlq.malformed', dlqEvent, sourceIP);
+  }
+
+  /**
+   * Record consumer group liveness heartbeat
+   */
+  recordHeartbeat(consumerGroupId, memberId, currentOffset = {}) {
+    if (!this.consumerHeartbeats.has(consumerGroupId)) {
+      this.consumerHeartbeats.set(consumerGroupId, new Map());
+    }
+    const group = this.consumerHeartbeats.get(consumerGroupId);
+    group.set(memberId, {
+      memberId,
+      lastSeen: Date.now(),
+      currentOffset,
+    });
+    return true;
+  }
+
+  /**
+   * Get consumer group health, flagging timed-out / dead workers
+   */
+  getConsumerGroupStatus(consumerGroupId, timeoutMs = 30000) {
+    if (!this.consumerHeartbeats.has(consumerGroupId)) {
+      return { group: consumerGroupId, activeMembers: [], deadMembers: [] };
+    }
+    const now = Date.now();
+    const group = this.consumerHeartbeats.get(consumerGroupId);
+    const activeMembers = [];
+    const deadMembers = [];
+
+    for (const [memberId, info] of group.entries()) {
+      if (now - info.lastSeen <= timeoutMs) {
+        activeMembers.push(info);
+      } else {
+        deadMembers.push(info);
+      }
+    }
+
+    return {
+      group: consumerGroupId,
+      activeMembers,
+      deadMembers,
+      totalRegistered: group.size,
+    };
   }
 
   /**

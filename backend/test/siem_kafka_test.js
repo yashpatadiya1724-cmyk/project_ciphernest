@@ -140,6 +140,39 @@ if (emptyTopicBatch.length !== 0 || emptyPartitionBatch.length !== 0) {
 }
 console.log(`✅ Partition Consumer: Verified offset seek, batch limits, and boundary fallbacks`);
 
+// 9. Dead Letter Queue (DLQ) Routing for Corrupt Packets
+const poisonedPayload = "{ 'malformed_json': true, 0xBADF00D }";
+const dlqResult = engine.routeToDeadLetterQueue(poisonedPayload, 'MALFORMED_JSON_SYNTAX_ERROR', '192.168.1.105');
+if (dlqResult.topic !== 'dlq.malformed' || dlqResult.errorReason !== 'MALFORMED_JSON_SYNTAX_ERROR') {
+  throw new Error('DLQ routing failed to record error reason or topic');
+}
+const dlqMessages = engine.consume('dlq.malformed', dlqResult.partition, 0, 10);
+if (dlqMessages.length === 0 || dlqMessages[0].status !== 'DEAD_LETTER') {
+  throw new Error('DLQ consumer did not find the routed dead-letter message');
+}
+console.log(`✅ Dead-Letter Queue (DLQ): Poisoned packet safely quarantined to 'dlq.malformed' (partition ${dlqResult.partition})`);
+
+// 10. Consumer Group Heartbeat and Liveness Test
+const groupId = 'siem-indexing-cluster';
+engine.recordHeartbeat(groupId, 'worker-1', { 'firewall.traffic:0': 1200 });
+engine.recordHeartbeat(groupId, 'worker-2', { 'firewall.traffic:1': 1150 });
+// Mock an expired worker
+const groupMap = engine.consumerHeartbeats.get(groupId);
+groupMap.set('worker-dead', {
+  memberId: 'worker-dead',
+  lastSeen: Date.now() - 60000, // 60s ago
+  currentOffset: { 'firewall.traffic:2': 500 }
+});
+
+const groupStatus = engine.getConsumerGroupStatus(groupId, 30000);
+if (groupStatus.activeMembers.length !== 2 || groupStatus.deadMembers.length !== 1) {
+  throw new Error(`Consumer group liveness mismatch: active=${groupStatus.activeMembers.length}, dead=${groupStatus.deadMembers.length}`);
+}
+if (groupStatus.deadMembers[0].memberId !== 'worker-dead') {
+  throw new Error('Dead member identification incorrect');
+}
+console.log(`✅ Consumer Heartbeat: Cluster group '${groupId}' correctly detected 2 active members and 1 dead worker`);
+
 console.log('==================================================');
 console.log('🏆 ALL CIPHERNEST SIEM TESTS PASSED (100%)');
 console.log('==================================================');
