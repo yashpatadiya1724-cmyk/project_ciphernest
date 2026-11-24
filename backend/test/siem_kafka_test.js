@@ -79,7 +79,42 @@ if (!scanAnomaly) {
 }
 console.log(`✅ Anomaly Detected: [${scanAnomaly.severity}] ${scanAnomaly.type} (${scanAnomaly.scannedPortsCount} ports probed) -> Action: ${scanAnomaly.recommendedAction}`);
 
-// 5. Verify threat.anomalies Kafka topic routing
+// 5. High-Volume Data Exfiltration Test
+const exfilIP = '198.51.100.42';
+console.log(`⚡ Simulating high-volume data exfiltration from ${exfilIP}...`);
+engine.produce('firewall.traffic', {
+  sourceIP: exfilIP,
+  destinationPort: 443,
+  bytesSent: 75000000,
+  action: 'ALLOW',
+  protocol: 'HTTPS'
+}, exfilIP);
+
+const exfilAnomaly = engine.anomalies.find(a => a.sourceIP === exfilIP && a.type === 'DATA_EXFILTRATION_SPIKE');
+if (!exfilAnomaly) {
+  throw new Error('Failed to detect Data Exfiltration anomaly');
+}
+console.log(`✅ Anomaly Detected: [${exfilAnomaly.severity}] ${exfilAnomaly.type} (${(exfilAnomaly.bytesTransferred / 1000000).toFixed(1)}MB transferred) -> Action: ${exfilAnomaly.recommendedAction}`);
+
+// 6. Rapid DDoS / Flood Burst Test
+const botnetIP = '203.0.113.88';
+console.log(`⚡ Simulating DDoS flood burst from ${botnetIP}...`);
+for (let i = 0; i < 55; i++) {
+  engine.produce('firewall.traffic', {
+    sourceIP: botnetIP,
+    destinationPort: 80,
+    action: 'ALLOW',
+    protocol: 'TCP'
+  }, botnetIP);
+}
+
+const ddosAnomaly = engine.anomalies.find(a => a.sourceIP === botnetIP && a.type === 'DDOS_TRAFFIC_SPIKE');
+if (!ddosAnomaly) {
+  throw new Error('Failed to detect DDoS Traffic Spike anomaly');
+}
+console.log(`✅ Anomaly Detected: [${ddosAnomaly.severity}] ${ddosAnomaly.type} (${ddosAnomaly.packetCount} packets in window) -> Action: ${ddosAnomaly.recommendedAction}`);
+
+// 7. Verify threat.anomalies Kafka topic routing
 const anomalyTopicOffsets = engine.offsets['threat.anomalies'];
 const totalAnomaliesProduced = anomalyTopicOffsets.reduce((acc, curr) => acc + curr, 0);
 console.log(`✅ Kafka Topic 'threat.anomalies': Total ${totalAnomaliesProduced} security events routed to downstream SIEM subscribers`);

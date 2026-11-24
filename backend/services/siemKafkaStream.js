@@ -68,8 +68,10 @@ class SiemKafkaStreamEngine {
     this.topics[topic][partition].push(enriched);
     this.totalIngested++;
 
-    // Trigger real-time anomaly check
-    this.inspectAnomaly(enriched);
+    // Trigger real-time anomaly check on raw ingested telemetry (skip internal anomaly topics to prevent recursion)
+    if (topic !== 'threat.anomalies') {
+      this.inspectAnomaly(enriched);
+    }
 
     // Keep ring buffer bounded (last 5,000 entries per partition to prevent heap growth)
     if (this.topics[topic][partition].length > 5000) {
@@ -104,6 +106,7 @@ class SiemKafkaStreamEngine {
       this.ipTracking.set(sourceIP, {
         failedAuth: [],
         portsScanned: new Map(),
+        trafficTimestamps: [],
       });
     }
 
@@ -155,6 +158,39 @@ class SiemKafkaStreamEngine {
         this.produce('threat.anomalies', anomaly, sourceIP);
         tracker.portsScanned.clear();
       }
+    }
+
+    // 3. High Volume Data Exfiltration Anomaly
+    if (event.bytesSent && event.bytesSent > 50000000) {
+      const anomaly = {
+        id: `ANOM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'DATA_EXFILTRATION_SPIKE',
+        severity: 'HIGH',
+        sourceIP,
+        bytesTransferred: event.bytesSent,
+        detectedAt: new Date(now).toISOString(),
+        recommendedAction: 'THROTTLE_AND_ALERT_SOC',
+      };
+      this.anomalies.push(anomaly);
+      this.produce('threat.anomalies', anomaly, sourceIP);
+    }
+
+    // 4. DDoS / Flood Detection (>50 packets within 2 seconds)
+    tracker.trafficTimestamps.push(now);
+    tracker.trafficTimestamps = tracker.trafficTimestamps.filter(ts => now - ts <= 2000);
+    if (tracker.trafficTimestamps.length >= 50) {
+      const anomaly = {
+        id: `ANOM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'DDOS_TRAFFIC_SPIKE',
+        severity: 'CRITICAL',
+        sourceIP,
+        packetCount: tracker.trafficTimestamps.length,
+        detectedAt: new Date(now).toISOString(),
+        recommendedAction: 'RATE_LIMIT_AND_CLOUDFLARE_CHALLENGE',
+      };
+      this.anomalies.push(anomaly);
+      this.produce('threat.anomalies', anomaly, sourceIP);
+      tracker.trafficTimestamps = [];
     }
   }
 
